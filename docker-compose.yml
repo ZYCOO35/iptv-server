@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     ports:
-      - "8889:8889"
+      - "10086:10086"
     volumes:
       - ./data:/app/data
       - ./app:/app/app
