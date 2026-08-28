@@ -1,23 +1,29 @@
-From python:3.12-slim AS builder
+FROM ghcr.io/astral-sh/uv:0.12.7 AS uv
 
-WORKDIR /app
-COPY . .
+FROM python:3.12-slim AS builder
 
-ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-ENV PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
-
-COPY requirements.txt .
-RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
-
-From python:3.12-slim AS runtime
-
-COPY --from=builder /wheels /wheels
-COPY --from=builder /app /app
-
-RUN pip install --no-cache-dir --no-index --find-links /wheels -r /app/requirements.txt
-
+COPY --from=uv /uv /bin/uv
 WORKDIR /app
 
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
+
+FROM python:3.12-slim AS runtime
+
+RUN groupadd --system iptv && useradd --system --gid iptv --home-dir /app iptv
+
+WORKDIR /app
+COPY --from=builder --chown=iptv:iptv /app/.venv /app/.venv
+COPY --chown=iptv:iptv app /app/app
+COPY --chown=iptv:iptv config/config.example.yaml /app/config/config.example.yaml
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENV IPTV_CONFIG_PATH=/app/config/config.yaml
+
+USER iptv
 EXPOSE 8889
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8889"]

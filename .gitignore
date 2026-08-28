@@ -9,9 +9,17 @@ dist/
 # Virtual environment
 venv/
 env/
+.venv/
 
 # Docker
 data/
+config/config.yaml
+
+# Tool caches
+.pytest_cache/
+.pytest-tmp/
+.ruff_cache/
+.coverage
 
 # IDE
 .vscode/

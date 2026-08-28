@@ -1,0 +1,26 @@
+version: 1
+
+server:
+  # Set this when the address seen by players differs from the request Host header.
+  public_base_url: null
+
+proxy:
+  connect_timeout_seconds: 10
+  read_timeout_seconds: 30
+  total_timeout_seconds: 120
+  forward_request_headers:
+    - range
+    - user-agent
+  headers: {}
+
+channels:
+  - id: example
+    name: Example Channel
+    url: https://example.com/live/index.m3u8
+    mode: proxy
+    group: Demo
+    logo: ""
+    enabled: false
+    sort_order: 10
+    headers:
+      Referer: https://example.com/

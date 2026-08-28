@@ -1,124 +1,138 @@
 import asyncio
 import hashlib
-from pathlib import Path
-from typing import List, Optional
 import logging
+import os
+from pathlib import Path
 
-import aiosqlite
-
-from app.models.channel import Channel
-from app.database.connection import init_db, close_db
+from app.models.channel import AppConfig, Channel
+from app.services.config_loader import ConfigLoadError, load_config
 
 logger = logging.getLogger(__name__)
 
-DB_DIR = Path("/app/data")
-DB_FILE = DB_DIR / "channels.db"
 
 class ChannelConfig:
-    def __init__(self):
-        self._channels: List[Channel] = []
-        self._current_hash: str = ""
+    def __init__(self, path: Path | None = None, poll_interval: float = 1.0):
+        configured_path = path or Path(os.getenv("IPTV_CONFIG_PATH", "config/config.yaml"))
+        self._path = configured_path.resolve()
+        self._poll_interval = poll_interval
+        self._config: AppConfig | None = None
+        self._channels: tuple[Channel, ...] = ()
+        self._channel_by_id: dict[str, Channel] = {}
+        self._revision = ""
+        self._observed_revision = ""
+        self._last_error: str | None = None
+        self._poll_task: asyncio.Task[None] | None = None
 
-    async def start(self, db_conn):
-        # self._db = db = db_conn or await init_db()
+    async def start(self) -> None:
+        config, revision = load_config(self._path)
+        self._apply(config, revision)
+        self._poll_task = asyncio.create_task(self._watch_loop())
+        logger.info(
+            "[Config] Loaded %d enabled channels from %s (revision=%s)",
+            len(self._channels),
+            self._path,
+            revision[:8],
+        )
 
-        channels, fprint = await self._load_and_hash_from_db()
-        self._channels = channels
-        self._current_hash = fprint
-
-        logger.info(f"[ConfigManager] First load complete. {len(channels)} channels.")
-        logger.info(f"[ConfigManager] Initial Config Hash: {fprint[:8]}...")
-
-        self._poll_task = asyncio.create_task(self._db_poller())
-        logger.info("[ConfigManager] Database watcher started (interval: 5s).")
-
-    async def stop(self):
-        if self._poll_task:
+    async def stop(self) -> None:
+        if self._poll_task is not None:
             self._poll_task.cancel()
             try:
                 await self._poll_task
             except asyncio.CancelledError:
                 pass
-        logger.info("[ConfigManager] Database watcher stopped.")
-
-        # await close_db(self._db)
-        # logger.info("[ConfigManager] Database connection closed.")
+            self._poll_task = None
+        logger.info("[Config] Watcher stopped")
 
     @property
-    def channels(self) -> List[Channel]:
+    def config(self) -> AppConfig:
+        if self._config is None:
+            raise RuntimeError("configuration has not been loaded")
+        return self._config
+
+    @property
+    def channels(self) -> tuple[Channel, ...]:
         return self._channels
-    
-    def get_channels_by_group(self, group_name: str) -> List[Channel]:
-        return [ch for ch in self._channels if ch.group == group_name]
-    
-    def get_channel_by_id(self, channel_id: str) -> Optional[Channel]:
-        for ch in self._channels:
-            if ch.id == channel_id:
-                return ch
-        return None
+
+    @property
+    def revision(self) -> str:
+        return self._revision
+
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
+
+    @property
+    def status(self) -> str:
+        return "degraded" if self._last_error else "ok"
+
+    def get_channels_by_group(self, group_name: str) -> list[Channel]:
+        return [channel for channel in self._channels if channel.group == group_name]
+
+    def get_channel_by_id(self, channel_id: str) -> Channel | None:
+        return self._channel_by_id.get(channel_id)
 
     @property
     def total_count(self) -> int:
-        return self._total_count
-    
-    async def _load_and_hash_from_db(self) -> tuple:
-        DB_DIR.mkdir(parents=True, exist_ok=True)
-        async with aiosqlite.connect(str(DB_FILE)) as db:
-            await db.execute("PRAGMA journal_mode=WAL;")
-            await db.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+        return len(self._channels)
 
-            cursor = await db.execute(
-                'SELECT id, name, url, mode, "group", logo, enabled, sort_order '
-                "FROM channels "
-                "WHERE enabled = 1 "
-                "ORDER BY sort_order ASC, id ASC"
+    def _apply(self, config: AppConfig, revision: str) -> None:
+        enabled = tuple(
+            sorted(
+                (channel for channel in config.channels if channel.enabled),
+                key=lambda channel: (channel.sort_order, channel.id),
             )
-            rows = await cursor.fetchall()
+        )
+        self._config = config
+        self._channels = enabled
+        self._channel_by_id = {channel.id: channel for channel in enabled}
+        self._revision = revision
+        self._observed_revision = revision
+        self._last_error = None
 
-        data_string = "|".join([
-            f"{r[0]}:{r[1]}:{r[2]}:{r[3]}:{r[4]}:{r[5]}:{r[6]}:{r[7]}" for r in rows
-        ])
+    async def reload(self) -> bool:
+        try:
+            config, revision = load_config(self._path)
+        except ConfigLoadError as exc:
+            self._last_error = str(exc)
+            logger.error("[Config] Reload rejected; keeping previous config: %s", exc)
+            return False
 
-        content_hash = hashlib.sha256(data_string.encode('utf-8')).hexdigest()
+        if revision == self._revision:
+            self._observed_revision = revision
+            self._last_error = None
+            return False
 
-        new_channels = [
-            Channel(
-                id=row[0],
-                name=row[1],
-                url=row[2],
-                mode=row[3],
-                group=row[4],
-                logo=row[5],
-                enabled=row[6],
-                sort_order=row[7]
-            ) for row in rows
-        ]
+        self._apply(config, revision)
+        logger.info(
+            "[Config] Reloaded %d enabled channels (revision=%s)",
+            len(self._channels),
+            revision[:8],
+        )
+        return True
 
-        if len(new_channels) != len(self._channels):
-            logger.info(f"[ConfigManager] Reloaded: {len(new_channels)} channels.")
-
-        return new_channels, content_hash
-    
-    async def _db_poller(self):
+    async def _watch_loop(self) -> None:
         while True:
             try:
-                _, new_hash = await self._load_and_hash_from_db()
+                await asyncio.sleep(self._poll_interval)
+                try:
+                    observed = hashlib.sha256(self._path.read_bytes()).hexdigest()
+                except OSError as exc:
+                    message = f"cannot read config {self._path}: {exc}"
+                    if message != self._last_error:
+                        logger.error("[Config] %s; keeping previous config", message)
+                    self._last_error = message
+                    continue
 
-                # logger.info(f"[DEBUG] Checking hash: {new_hash[:8]} (cache: {self._current_hash[:8]})")
-
-                if new_hash != self._current_hash:
-                    logger.info(f"[ConfigManager] Hash Changed! ({new_hash[:8]} vs {self._current_hash[:8]})")
-
-                    self._channels, self._current_hash = await self._load_and_hash_from_db()
-                    logger.info("[ConfigManager] Cache refreshed automatically.")
-
-                await asyncio.sleep(5)
-
+                if observed == self._observed_revision:
+                    continue
+                self._observed_revision = observed
+                await asyncio.sleep(0.5)
+                await self.reload()
             except asyncio.CancelledError:
-                logger.info("[ConfigManager] Poller task cancelled.")
-                break
-            except Exception as e:
-                logger.warning(f"[ConfigManager] Poller error: {e}")
-                await asyncio.sleep(5)
+                raise
+            except Exception:
+                logger.exception("[Config] Unexpected watcher error")
+
 
 channel_config = ChannelConfig()

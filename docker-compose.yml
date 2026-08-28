@@ -1,13 +1,21 @@
 services:
   iptv-server:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    image: ghcr.io/mrsibe/iptv-server:latest
     ports:
       - "8889:8889"
     volumes:
-      - ./data:/app/data
-      - ./app:/app/app
+      - ./config/config.yaml:/app/config/config.yaml:ro
     environment:
-      - TZ=Asia/Shanghai
+      TZ: Asia/Shanghai
+      IPTV_CONFIG_PATH: /app/config/config.yaml
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8889/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
