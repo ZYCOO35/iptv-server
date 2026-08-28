@@ -16,11 +16,11 @@ jobs:
 
       # 2. 安装 QEMU（这是关键：让 Linux 电脑能模拟出 ARM/Mac 芯片的运行环境）
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v5
 
       # 3. 配置 Buildx 工具（用于处理多架构构建）
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v5
 
       # 任务 A：构建单独的 AMD64 (适用于 Windows/Intel PC)
       - name: Build and Export AMD64
