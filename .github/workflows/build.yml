@@ -1,4 +1,4 @@
-name: Build Multi-Arch Images
+name: Build Dual-Arch Images
 
 on:
   push:
@@ -9,19 +9,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 检出你的代码 (使用官方标准的 v4)
+      # 1. 检出你的代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 安装 QEMU (这是用于模拟 ARM/Mac 芯片的关键)
+      # 2. 设置 QEMU (用于模拟非本机 CPU 环境的关键)
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # 3. 配置 Buildx 工具 (使用官方模板中的 v3 版本)
+      # 3. 初始化 Buildx 工具链
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
 
-      # --- 构建 amd64 专用包 ---
+      # --- 第一步：构建 amd64 专用包 (适用于 Windows/PC) ---
       - name: Build & Export AMD64
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
@@ -31,7 +31,7 @@ jobs:
           tags: iptv-server:amd64
           outputs: type=docker,dest=/tmp/iptv-server-amd64.tar
 
-      # --- 构建 arm64 专用包 ---
+      # --- 第二步：构建 arm64 专用包 (适用于 Mac M系列/树莓派) ---
       - name: Build & Export ARM64
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
@@ -41,22 +41,12 @@ jobs:
           tags: iptv-server:arm64
           outputs: type=docker,dest=/tmp/iptv-server-arm64.tar
 
-      # --- 构建通用包 (Universal) ---
-      - name: Build & Export Universal
-        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
-        with:
-          context: .
-          file: ./docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          tags: iptv-server:universal
-          outputs: type=docker,dest=/tmp/iptv-server-universal.tar
-
-      # --- 上传产物供下载 ---
+      # --- 第三步：上传产物供下载 ---
+      # 我们将这两个成功的镜像包上传到一个 zip 文件夹中，方便你一键接收
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: iptv-server-all-packs
+          name: iptv-server-dual-packs
           path: |
             /tmp/iptv-server-amd64.tar
             /tmp/iptv-server-arm64.tar
-            /tmp/iptv-server-universal.tar
