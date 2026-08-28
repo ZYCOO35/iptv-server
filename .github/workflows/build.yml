@@ -2,25 +2,25 @@ name: Build Multi-Arch Image
 
 # 触发条件：当你 push 代码到 main 分支时自动运行
 on:
-	push:
-		branches: [ "main" ]
+  push:
+    branches: [ "main" ]
 
 jobs:
-	build-image:
-		runs-on: ubuntu-latest
+  build-image:
+    runs-on: ubuntu-latest
 
-	steps:
-		# 1. 检出你的代码
-		- name: Checkout code
-		  uses: actions/checkout@v3
+  steps:
+    # 1. 检出你的代码
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-		# 2. 安装 QEMU（这是关键：让 Linux 电脑能模拟出 ARM/Mac 芯片的运行环境）
-		- name: Set up QEMU
-		  uses: docker/setup-qemu-action@v2
+    # 2. 安装 QEMU（这是关键：让 Linux 电脑能模拟出 ARM/Mac 芯片的运行环境）
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v2
 
-		# 3. 配置 Buildx 工具（用于处理多架构构建）
-		- name: Set up Docker Buildx
-		  uses: docker/setup-buildx-action@v2
+    # 3. 配置 Buildx 工具（用于处理多架构构建）
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
     # 任务 A：构建单独的 AMD64 (适用于 Windows/Intel PC)
     - name: Build and Export AMD64
