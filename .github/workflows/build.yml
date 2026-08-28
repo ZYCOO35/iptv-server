@@ -9,55 +9,55 @@ jobs:
   build-image:
     runs-on: ubuntu-latest
 
-  steps:
-    # 1. 检出你的代码
-    - name: Checkout code
-      uses: actions/checkout@v3
+    steps:
+      # 1. 检出你的代码
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    # 2. 安装 QEMU（这是关键：让 Linux 电脑能模拟出 ARM/Mac 芯片的运行环境）
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
+      # 2. 安装 QEMU（这是关键：让 Linux 电脑能模拟出 ARM/Mac 芯片的运行环境）
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
 
-    # 3. 配置 Buildx 工具（用于处理多架构构建）
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      # 3. 配置 Buildx 工具（用于处理多架构构建）
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-    # 任务 A：构建单独的 AMD64 (适用于 Windows/Intel PC)
-    - name: Build and Export AMD64
-      run: |
-        docker buildx build \
-          --platform linux/amd64 \
-          -f docker/Dockerfile \
-          -t iptv-server-amd64:latest \
-          --output type=docker,dest=/tmp/iptv-server-amd64.tar \
-          .
+      # 任务 A：构建单独的 AMD64 (适用于 Windows/Intel PC)
+      - name: Build and Export AMD64
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            -f docker/Dockerfile \
+            -t iptv-server-amd64:latest \
+            --output type=docker,dest=/tmp/iptv-server-amd64.tar \
+            .
 
-    # 任务 B：构建单独的 ARM64 (适用于 Apple M1/M2/M3 / 树莓派)
-    - name: Build and Export ARM64
-      run: |
-        docker buildx build \
-          --platform linux/arm64 \
-          -f docker/Dockerfile \
-          -t iptv-server-arm64:latest \
-          --output type=docker,dest=/tmp/iptv-server-arm64.tar \
-          .
+      # 任务 B：构建单独的 ARM64 (适用于 Apple M1/M2/M3 / 树莓派)
+      - name: Build and Export ARM64
+        run: |
+          docker buildx build \
+            --platform linux/arm64 \
+            -f docker/Dockerfile \
+            -t iptv-server-arm64:latest \
+            --output type=docker,dest=/tmp/iptv-server-arm64.tar \
+            .
 
-    # 任务 C：构建通用 Universal 包 (包含两种架构)
-    - name: Build and Export Universal
-      run: |
-        docker buildx build \
-          --platform linux/amd64,linux/arm64 \
-          -f docker/Dockerfile \
-          -t iptv-server-universal:latest \
-          --output type=docker,dest=/tmp/iptv-server-universal.tar \
-          .
+      # 任务 C：构建通用 Universal 包 (包含两种架构)
+      - name: Build and Export Universal
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -f docker/Dockerfile \
+            -t iptv-server-universal:latest \
+            --output type=docker,dest=/tmp/iptv-server-universal.tar \
+            .
 
-    # 4. 将所有产物上传，方便你在网页端一键下载
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: iptv-server-packages
-        path: |
-          /tmp/iptv-server-amd64.tar
-          /tmp/iptv-server-arm64.tar
-          /tmp/iptv-server-universal.tar
+      # 4. 将所有产物上传，方便你在网页端一键下载
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: iptv-server-packages
+          path: |
+            /tmp/iptv-server-amd64.tar
+            /tmp/iptv-server-arm64.tar
+            /tmp/iptv-server-universal.tar
