@@ -12,7 +12,7 @@ jobs:
     steps:
       # 1. 检出你的代码
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 2. 安装 QEMU（这是关键：让 Linux 电脑能模拟出 ARM/Mac 芯片的运行环境）
       - name: Set up QEMU
@@ -54,7 +54,7 @@ jobs:
 
       # 4. 将所有产物上传，方便你在网页端一键下载
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: iptv-server-packages
           path: |
